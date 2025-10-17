@@ -27,12 +27,10 @@ if [ -z "$OWNER" ] || [ -z "$REPO" ] || [ -z "$PR_NUMBER" ]; then
 fi
 
 # ghコマンドで元のPRのタイトルとマージ日時（Unix秒）を取得
-# Unix秒に変換することで、dateコマンドで正確なJST変換が可能になる
 PR_INFO_JSON=$(gh pr view "$PR_NUMBER" --repo "$OWNER/$REPO" --json title,mergedAt)
 MAIN_PR_TITLE=$(echo "$PR_INFO_JSON" | jq -r '.title')
 
-# --- JSTへの正確な変換 ---
-# 1. mergedAtをjqでUnix秒に変換（fromdateiso8601）
+# Unix秒に変換（UTC基準）
 MERGED_AT_UNIX=$(echo "$PR_INFO_JSON" | jq -r '.mergedAt | fromdateiso8601')
 
 # 2. dateコマンドにUnix秒を渡し、TZ=Asia/Tokyoを設定してJSTでフォーマット
@@ -43,7 +41,6 @@ else
   # macOSのdateコマンドを使用: -r (reference time) オプションを使用
   MERGED_AT_JST=$(TZ=Asia/Tokyo "$DATE_CMD" -r "$MERGED_AT_UNIX" +"%Y/%m/%d %H:%M:%S")
 fi
-# --------------------------
 
 # ヘッダー情報を出力
 echo "$REPO $MAIN_PR_TITLE"
@@ -56,9 +53,15 @@ COMMITS_MESSAGES=$(gh api repos/"$OWNER"/"$REPO"/pulls/"$PR_NUMBER"/commits --pa
 
 echo "$COMMITS_MESSAGES" | while read -r COMMIT_MESSAGE; do
 
-  # 'Merge pull request #<数字> from' というパターンからPR番号を抽出
+  # 1. 'Merge pull request #<数字> from' パターンを試す (念のため残す)
   MERGED_PR_NUMBER=$(echo "$COMMIT_MESSAGE" | sed -E 's/.*Merge pull request #([0-9]+) from.*/\1/')
 
+  # 2. 抽出できなかった場合、'(#<数字>)' パターンを試す
+  if [ -z "$MERGED_PR_NUMBER" ] || ! [[ "$MERGED_PR_NUMBER" =~ ^[0-9]+$ ]]; then
+    # コミットメッセージの末尾にある (#<数字>) を抽出
+    MERGED_PR_NUMBER=$(echo "$COMMIT_MESSAGE" | sed -E 's/.*\((#?)([0-9]+)\).*/\2/')
+  fi
+  
   # 抽出できた場合のみ処理を続行
   if [ -n "$MERGED_PR_NUMBER" ] && [[ "$MERGED_PR_NUMBER" =~ ^[0-9]+$ ]]; then
     # ghコマンドで元のPRの情報を取得
@@ -69,7 +72,7 @@ echo "$COMMITS_MESSAGES" | while read -r COMMIT_MESSAGE; do
     URL=$(echo "$PR_INFO_JSON" | jq -r '.url')
 
     # Slackに貼り付けやすいようにMarkdown形式で出力
-    echo "- $TITLE $AUTHOR $URL"
+    echo "- $TITLE $AUTHOR <$URL|PR Link>"
   fi
 
 done
