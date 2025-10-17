@@ -72,7 +72,7 @@ echo "$COMMITS_MESSAGES" | while read -r COMMIT_MESSAGE; do
     URL=$(echo "$PR_INFO_JSON" | jq -r '.url')
 
     # Slackに貼り付けやすいようにMarkdown形式で出力
-    echo "- $TITLE $AUTHOR <$URL|PR Link>"
+    echo "- $TITLE $AUTHOR $URL"
   fi
 
 done
